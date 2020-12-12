@@ -1,0 +1,293 @@
+---
+title: Finding the Causal Link Between the Success of a Kickstarter Project and the
+  Average Set Goal Amount
+author: "Coln Babineau (1003799482)"
+date: "December 21st, 2020"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+  word_document: default
+---
+
+## Code supporting this analysis available at: X
+## Data supporting this analysis available at: X
+
+# Abstract
+
+The goal of this analysis is to ultimately reveal if there is a causal connection between the success of a Kickstarter project and set goal amount, on average. To do this, a large dataset containing information on Kickstarter projects up to January 2018 was sampled to match observations based on propensity scores for the success of a project and then modeled to see if success remained a significant variable impacting set goal amount. After all of this was done, it was revealed that successful projects appear to have a significantly lower set goal amount, on average. This may be useful information for those want to start a project on Kickstarter but are worried of the risks of setting their goal amount too high; they may be worried that setting a goal too high may be daunting to potential funders.
+
+# Keywords: Observational Study, Propensity Score, Causal Inference, Kickstarter, Financial Goals, Crowdfunding
+
+# Introduction
+
+With the rise of Kickstarter projects (projects of multiple varieties that are crowdfunded on Kickstarter.com), there are a lot of questions that prospective project managers, potenital Kickstarter members, and future clients looking for funding most likely have. One concern in particular that many have is in regards to setting their goal amount that they want to raise for their project. It may be tempting to set a high goal in order to raise more money, but perhaps a high goal amount looks daunting to potential project funders who are concerned that goal may not be met. Someone potentially uploading a project may be concerned of whether or not setting their goal too high puts them at risk for receiving funding. Consequentially, performing a causal analysis to find out if setting a higher goal amount puts the success of one's project of risk may be beneficial for anyone trying to decide what to set their goal amount as on Kickstarter.
+
+Since an experiment cannot realistically be conducted by randomly assigning whether a project is successful or unsuccessful, using propensity score matching on observational data proves to be useful for causal inference (Propensity Score Matching, n.d.). This technique of propensity score matching was first discovered in 1983 by Paul Rosenbaum and Donald Rubin (Polsky & Baiocchi, 2014), and is being used more frequently in recent years (King & Nielsen, 2018). Propensity score matching involves predicting how likely a certain observation in a dataset is to receive a particular treatment based on their characteristics, then matching observations that were predicted to be equally likely to receive the treatment, one observation having received the treatment and the other not having received it. From there, a model is then constructed to see if there is still a significant difference in the treatment group and non-treatment group after matching observations. In this report, I will be using this technique of propensity score matching to attempt to find out if there is a direct link between successful Kickstarter projects and having a higher goal amount for their projects, on average.
+
+To give a little more context on the problem, Kickstarter is a crowdfunding website that was founded in 2009 (About, n.d.). Kickstarter provides a platform for people who want to construct projects of various types (music projects, art projects, technology projects, etc.) to be able to receive funding from the public. The user explains their project, sets rewards depending on how much someone donates, and sets a goal amount of money that they hope to raise. A project is deemed to have been successfully funded if the user reaches the goal that they set. Of course, a user may want to set the goal relatively high, but that may seem daunting to a potential funder if they think that the goal isn't realistic, possibly earning the user less money. This is where the problem arises, as users may want to know if setting a goal too high may put them at risk of not achieving their set goal.
+
+A large dataset containing all Kickstarter project information up to January 2018 will be randomly sampled to attempt to find a causal link between successful projects and average goal amount on Kickstarter, The Methodology section will go in further detail on the data the model that was constructed to perform the propensity score analysis. The Results section will highlight the results of the propensity score analysis, and the Discussion section will showcase statistical inferences of the data, the conclusions drawn from these inferences, weaknesses of the analysis, and next steps. 
+
+# Methodology 
+
+## Data
+
+The dataset that was used comes from kaggle.com user Mickael Mouille, a crowdfunding enthusiast who collected data from Kickstarter (Mouille, 2018). This dataset contained information on all Kickstarter projects up until January 2018 for a total of 378,661 observations. Although Mouille did not state whether or not any observations were missing, considering the size of the dataset, if there are missing observations, it is unlikely that a significant number are missing.
+
+To avoid skewing the average goal too much, the dataset was then reduced to not include extreme outliers of goal amounts (any goal over 50 000), this value being chosen as although the average originally was 49 000 for goal amount, the median was 5200 as some values were extremly higher than the median. Some outliers remained even after filtering, but 50 000 was chosen to balance avoiding extreme skewness of the goal mean while not reducing the dataset too much. Once the dataset was filtered, 339,249 observations remained, allowing most of the data to be kept.
+
+Since the dataset was still very large, 10,000 observations were randomly sampled to be analyzed, as having such a large dataset causes extremely slow processing when running models in R and 10,000 is still a sufficiently large sample to analyze.
+
+The target population of this study is all Kickstarter projects, the frame population is all Kickstarter projects up to January 2018, and the sampling population is the sample of 10,000 Kickstarter projects from the dataset containing observations up to January 2018.
+
+The data is divided into two groups depending on the whether or not a project was successful (state == successful) or not (state != successful). A binary variable (success) was created from the variable state to divide the dataset into successful project and non-successful projects. The primary variable of interest is average goal amount for a project (goal). To calculate propensity scores for whether or not a project was successful, the variables used were number of funders for a project (backers), the amount pledged for a project (pledged), whether or not a project came from the United States (US_project), and the main category of the project (main_category). US_project is a binary variable that was constructed from the country variable, as Kickstarter is an American company and a lot of projects are from the US as a result. This was a compromise of using the the country variable while getting significant information without having too many sub-variables. The variable main_category was chosen as opposed to the variable category for a similar reason, as main_category had fewer kinds of categories but still gave significant information. All monetary amounts are in USD.
+
+Some strengths of this data is that it is very thorough and representative, the only significant issue is that the goal amount had to be cut-off to avoid skewness and some data higher goal data is missing as a result. Also for efficiency's sake, not all of even the reduced data is used, as a sample was more practical for such a large dataset.
+
+The raw data is shown below. The variables are represented separately for both treatment groups of whether or not the project was successful (successful vs. no_success).
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(tidyverse)
+library(broom)
+library(skimr)
+#install.packages("flextable")
+library(flextable)
+library(knitr)
+#tinytex::install_tinytex()
+setwd("C:/users/colin/Desktop/sta304fp")
+
+kick_data <- read_csv("ks-projects-201801.csv")
+kick_data2 <- read_csv("ks-projects-201801.csv")
+
+#constructing a binary variable for successes and non-successes 
+kick_data <- 
+  kick_data %>%
+  mutate(success = if_else(state == "successful", 1, 0))
+
+kick_data <-
+  kick_data %>%
+  mutate(US_project = if_else(country == "US", 1, 0))
+
+#filtering extremely high goals to avoid skewing the results too much
+kick_data <- 
+  filter(kick_data, goal < 50000)
+
+set.seed(1003799482)
+n = 10000
+kick_sample <- sample_n(kick_data, n)
+```
+
+```{r, echo = FALSE}
+# checking the mean and median of the original dataset
+#mean(kick_data2$goal)
+#median(kick_data2$goal)
+```
+
+```{r, echo = FALSE}
+successful <- filter(kick_sample, state == "successful")
+no_success <- filter(kick_sample, state != "successful")
+
+my_skim <- skim_with(numeric = sfl(hist = NULL))
+my_skim(successful, goal, backers, pledged)
+
+```
+$$ Tables \:1 \: and \:2 \:(Successful \:Project \: Summary \: Statistics) $$
+```{r, echo = FALSE}
+my_skim(no_success, goal, backers, pledged)
+```
+$$ Tables \:3 \: and \:4  \:(Unsuccessful \:Project \: Summary \: Statistics) $$
+
+
+```{r, echo = FALSE}
+ggplot(successful, aes(x=as.factor(US_project), fill=as.factor(US_project) )) + 
+  geom_bar( ) +
+  scale_fill_hue(c = 40) +
+  theme(legend.position="none") +
+  xlab("US project (1 if US, 0 if otherwise)") + ylab("Amount of Projects") + ggtitle("US and Non-US projects for Successful Projects")
+```
+$$ Plot \:1 $$
+```{r, echo = FALSE}
+ggplot(no_success, aes(x=as.factor(US_project), fill=as.factor(US_project) )) + 
+  geom_bar( ) +
+  scale_fill_hue(c = 40) +
+  theme(legend.position="none") +
+  xlab("US project (1 if US, 0 if otherwise)") + ylab("Amount of Projects") + ggtitle("US and Non-US projects for Unsuccessful Projects")
+```
+$$ Plot \:2 $$
+```{r, echo = FALSE}
+ggplot(successful, aes(x=as.factor(main_category), fill=as.factor(main_category) )) + 
+  geom_bar( ) +
+  scale_fill_hue(c = 40) +
+  theme(legend.position="none") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  xlab("Project Category") + ylab("Amount of Projects") + ggtitle("Types of Projects for Successful Projects")
+```
+$$ Plot \:3 $$
+```{r, echo = FALSE}
+ggplot(no_success, aes(x=as.factor(main_category), fill=as.factor(main_category) )) + 
+  geom_bar( ) +
+  scale_fill_hue(c = 40) +
+  theme(legend.position="none") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  xlab("Project Category") + ylab("Amount of Projects") + ggtitle("Types of Projects for Unsuccessful Projects")
+```
+$$ Plot \:4 $$
+```{r, echo = FALSE}
+ggplot(kick_sample, aes(as.factor(success), goal)) + geom_boxplot() + xlab("Project Success (1 if successful, 0 if otherwise)") + ylab("Kickstarter Goal Amount (USD)") + ggtitle("Goal Amount Distribution Based on Treatment Group", subtitle = "(Prior to Propensity Score Matching)")
+```
+$$ Plot \:5 $$
+
+Plot 5 shows the distribution of goal amounts in the sample based on the success of a project before propensity score matching. In each boxplot, the black horizontal line indicates the divison of where half of the data lies above and below, the box itself contains the middle 50% of the data, and black dots represent outliers. Currently it does appear that unsuccessful projects tend to have higher set goals amount, but propensity score matching will help reveal whether or not the success of a project actually has anything to do with this difference.
+
+## Model
+
+Two models were constructed for this analysis, a logistic regression model for calculating propensity scores and a multiple linear regression model to verify the significance of project success in impacting the average goal amount. While the latter is the primary model of interest for this analysis, it requires the former model to function properly. 
+
+The logistic regression model to calculate the success propensity score of each observation in the sample is modeled by
+
+$$ log(p_{success}/1-p_{success}) = \beta_0+\beta_1  x_{USproject} + \beta_2 x_{backers} + \beta_3 x_{pledged} + \beta_4 x_{Art} + \beta_5 x_{Comics} $$ 
+$$ + \beta_6 x_{Crafts} + \beta_7 x_{Dance} + \beta_8 x_{Design} + \beta_9 x_{Fashion}+ \beta_{10} x_{Film/Video} + \beta_{11} x_{Food} $$
+$$+ \beta_{12} x_{Games} + \beta_{13} x_{Journalism} + \beta_{14} x_{Music} + \beta_{15} x_{Photography} $$
+$$ + \beta_{16} x_{Publishing} + \beta_{17} x_{Technology} + \beta_{18} x_{Theater} + \epsilon $$
+
+Where $p_{success}$ represents the estimated probability that a project will be successful, $\beta_0$ represents the intercept of the model, $\beta_1$ represents the estimated change in log odds of project success if the project is from the United States, $\beta_2$ represents the estimated change in log odds of project success for each additional backer a project has, $\beta_3$ represents the estimated change in log odds of project success for each additional pledged USD dollar that a project has, $\beta_4$ to $\beta_{18}$ are dummy variables represent the estimated change in log odds of project success based on the main category of the project (so only one $\beta$ of these will be present for each observation as each project only has one category), and $\epsilon$ represents the random error. $\beta_1$ is a dummy variable as well but for a binary variable so there is only one option present, where the main category has many dummy variables. 
+
+After this logistic regression model has been used to match propensity scores, the remaining observations will be put through a multiple linear regression model to predict the average goal amount of a project after matching. The multiple linear regression model is modeled by
+
+$$ y_{goal} = \beta_0+\beta_1  x_{USproject} + \beta_2 x_{backers} + \beta_3 x_{pledged} + \beta_4 x_{Art} + \beta_5 x_{Comics} + \beta_6 x_{Crafts} $$
+$$ + \beta_7 x_{Dance} + \beta_8 x_{Design} + \beta_9 x_{Fashion}
++ \beta_{10} x_{Film/Video} + \beta_{11} x_{Food} $$ 
+$$ + \beta_{12} x_{Games} + \beta_{13} x_{Journalism} + \beta_{14} x_{Music} + \beta_{15} x_{Photography} + \beta_{16} x_{Publishing}$$
+$$ + \beta_{17} x_{Technology} + \beta_{18} x_{Theater} + \beta_{19} x_{success} + \epsilon $$
+
+Where $y_{goal}$ represents the estimated goal amount for a project,$\beta_0$ represents the intercept of the model, $\beta_1$ represents the estimated change, on average, of project goal amount if the project is from the United States, $\beta_2$ represents the estimated change, on average, of project goal amount for each additional backer a project has, $\beta_3$ represents the estimated change, on average, in of project goal amount for each additional pledged USD dollar that a project has, $\beta_4$ to $\beta_{18}$ represent the estimated change, on average, of project goal amount based on the main category of the project (so only one $\beta$ of these will be present for each observation), $\beta_{19}$ represents the estimated change, on average, of project goal amount if the project is successful, and $\epsilon$ represents the random error. As mentioned in the logistic regression model, $\beta_1$ is a dummy variable as well but for a binary variable so there is only one option present, where the main category has many dummy variables. $\beta_{19}$ is of primary interest in this model, as its significance will help determine if a causal link exists between successful and non-successful projects for average goal amount. This variable is only present in this model as the logistic model is being used to predict the success of a project based on covariates, which are other characteristics in observations (Glen, 2020).
+
+A logistic regression model was chosen to estimate propensity scores of successful projects as the success of a project is a binary outcome. A multiple linear model, for example, would attempt to predict an average, so it is much less appropriate than a logistic regression model. For this same reason, however, is why a multiple linear regression was an appropriate model for predicting average goal amount. Each variable in this model is used in order to estimate the change of a project's goal amount, on average. In addition, the multiple linear model will give a p-value for  $\beta_{19}$ to help indicate whether or not the success of a project is a significant factor for impacting the goal amount of a Kickstarter project, on average. The R^2 will also be considered to see if the model overall accounts for a significant amount of the variation present, but the p-value of  $\beta_{19}$ will be of most importance, as some less significant variables may impact the R^2 of the model (Frost et al., 2020).
+
+Both of these models were constructed and run through Rstudio, the linear regression model via glm and the multiple linear regression model using lm.
+
+
+```{r, echo = FALSE, warning = FALSE}
+propensity_score <- glm(success ~ as.factor(US_project) + backers + pledged + as.factor(main_category), 
+                        family = binomial,
+                        data = kick_sample)
+```
+
+```{r}
+kick_sample <- 
+  augment(propensity_score, 
+          data = kick_sample,
+          type.predict = "response") %>% 
+  dplyr::select(-.resid, -.std.resid, -.hat, -.sigma, -.cooksd) 
+
+kick_sample <- 
+  kick_sample %>% 
+  arrange(.fitted, success)
+
+kick_sample$treated <- 
+  if_else(kick_sample$success == 0, 0, 1)
+
+kick_sample$treated <- 
+  as.integer(kick_sample$treated)
+
+matches <- arm::matching(z = kick_sample$treated, 
+                         score = kick_sample$.fitted)
+
+kick_sample <- cbind(kick_sample, matches)
+
+kick_matched <- 
+  kick_sample %>% 
+  filter(match.ind != 0) %>% 
+  dplyr::select(-match.ind, -pairs, -treated)
+```
+
+```{r, echo = FALSE}
+#head(kick_matched)
+
+propensity_score_regression <- 
+  lm(goal ~ as.factor(US_project) + backers + pledged + as.factor(main_category) + success, 
+                data = kick_matched)
+```
+
+# Results
+
+
+```{r, echo = FALSE, message = FALSE}
+
+library(kableExtra)
+library(jtools)
+summ(propensity_score_regression)
+```
+
+$$ Table \:5 \:(Summary\: of\: Post-Matching\: Multiple\: Linear \:Regression\: Model) $$
+```{r, echo = FALSE}
+ggplot(kick_matched, aes(as.factor(success), goal)) + geom_boxplot() + xlab("Project Success (1 if successful, 0 if otherwise)") + ylab("Kickstarter Goal Amount (USD)") + ggtitle("Goal Amount Distribution Based on Treatment Group", subtitle = "(Post-Propensity Score Matching)")
+```
+$$ Plot \:6 $$
+
+Table 7 shows a summary table of the multiple linear regression model to estimate the average goal amount of a Kickstarter project. After the logistic regression model predicted the propensity scores for the success of a project based on covariates, 3728 pairs of observations were matched, for a total of 7456 observations in the multiple linear regression model (As noted by "observations" in Table 7). The final variable in Table 7 is the primary variable of interest (success), indicating that after propensity score matching, successful projects are estimated to have a set goal amount of $4528.86 less, on average, than non-successful projects (with a p-value of less than 0.001).
+
+Plot 6 shows the distribution of set goal amounts for successful and non-successful projects using boxplots after propensity score matching (how to interpret boxplots is mentioned in the Data section when looking at this distribution prior to matching).
+
+
+# Discussion
+
+## Summary
+
+The goal of this analysis is to find out if there is a causal link between successful Kickstarter projects and the set goal amount for Kickstarter projects, on average. As previously mentioned, propensity scores were calculated using a logistic regression model, and observations were matched for successful and non-successful projects. After matching, a multiple linear regression model was constructed to verify if the success of a project still appeared to have a different average set goal amount. The data for this analysis came from Mouille (2018), who constructed a dataset of Kickstarter projects and their characteristics up to January 2018. Some concerns of extreme outliers for goal amounts were taken into conideration, so the dataset was reduced to exclude observations which had goals of $50,000 USD and higher. Since this dataset, even after reducing, had a very large number of observations, a random sample of 10,000 observations was taken to aid in efficiency of running software.  
+
+## Conclusions
+
+The propensity score analysis revealed that successful Kickstarter projects are expected to have a set goal amount of $4528.86 less, on average, than non-successful projects (with a p-value of less than 0.001). Such a small p-value indicates that it is extremely unlikely that this happened by chance alone, giving significant evidence that there may be a causal link between successful Kickstarter projects and the set goal amount. Plot 7 also shows that the distribution is consistently lower for successful projects for goal amount than for non-successful projects. This is significant as it is always possible that a mean can be skewed, but these boxplots show that the 25th percentile, the median, and the 75th percentile of the successful groups are lower than those of the non-successful groups, so the set goal amount is consistently lower for the successful group of projects.
+
+Although the R^2 is only 0.17, meaning that only 17% of the variability in the model is accounted for, the p-value for success variable is very low, still giving good reason to believe that successful projects generally have lower set goal amounts, on average. There are many reasons that this is not of huge concern. Bear in mind that success is a dummy variable with a large range of calues and some variables in the model are just overall not significant and variable, so that could also be affecting the R^2. Additionally, despite cutting down the maximum goal in our data to avoid skewness, there definitely would be skewed points regardless impacting the R^2 (especially considering the amount of outliers in Plot 7)(Frost et al., 2020).
+
+Overall, the results appear to be in favour of concluding that the success of a project does impact the average goal amount, with successful Kickstarter projects expected to have a set goal amount of $4528.86 less, on average, than non-successful projects.
+
+## Weaknesses
+
+Some weaknesses of this analysis come with the criticism of using propensity score matching in general. King and Nielsen (2018), for example, criticize using propensity scores for matching as significant information can be ignored in this process. Perhaps a covariate that was not included in the dataset constructed by Mouille (2018) that would change the propensity scores signficantly of the observations, possibly altering the significance of the success variable post-matching. Without a proper experiment, it is very difficult to know if all covariates have truly been accounted for.
+
+Another weakness is the fact that not all of the observations were accounted for, as the dataset was reduced to exclude large goal amounts and a sample of 10,000 was then taken, meaning there is some information missing.
+
+It should also be noted that the success variable was constructed as a binary variable from the state variable, indicating solely whether or not a project was successful, but these are not the only possible outcomes of the state variable. Although most outcomes of the state variable were successes and failures, but there were some exceptions (such as "in progress"), meaning that all non-successful categories were generalized as one. It is unlikely that this would significantly impact the results, but it is possible that there would've been slightly different results if the analysis only accounted for successes and failures.
+
+## Next Steps
+
+For next steps, perhaps another analysis could be carried out where instead of dividing treatment groups as successes and non-successes, some observations could be reduced to solely account for successes and failures to ensure that this analysis remains accurate for a more specific case. The analysis could also be replicated with a different random sample by setting a different seed, or a larger sample could be taken as well to verify the results. Another replication of the analysis could also be constructed with updated data to ensure that the results have remained consistent, as the dataset only considered projects up to January 2018. 
+
+# References
+
+About. (n.d.). Retrieved December 02, 2020, from https://www.kickstarter.com/about?ref=global-footer
+
+Alexander, R. (2020, November 05). Matching and Difference in differences. Retrieved December 02, 2020, from https://www.tellingstorieswithdata.com/06-03-matching_and_differences.html
+
+A box and whiskers plot (in the style of Tukey) - geom_boxplot. (n.d.). Retrieved December 02, 2020, from https://ggplot2.tidyverse.org/reference/geom_boxplot.html
+
+Frost, J., Aksamitova, J., Lamessa, Laurie, Mondal, B., Katja, . . . Dubey, D. (2020, November 03). How To Interpret R-squared in Regression Analysis. Retrieved December 07, 2020, from https://statisticsbyjim.com/regression/interpret-r-squared-regression/
+
+Glen, S. (2020, September 16). Covariate Definition in Statistics. Retrieved December 07, 2020, from https://www.statisticshowto.com/covariate/
+
+Holtz, Y. (2018). Basic barplot with ggplot2. Retrieved December 02, 2020, from https://www.r-graph-gallery.com/218-basic-barplots-with-ggplot2.html
+
+King, G., & Nielsen, R. (2018). Why Propensity Scores Should Not Be Used for Matching. Political Analysis, 27(4), 435-454. doi:10.1017/pan.2019.11
+
+Long, J. (2020, November 15). Tools for summarizing and visualizing regression models. Retrieved December 08, 2020, from https://cran.r-project.org/web/packages/jtools/vignettes/summ.html
+
+Mouille, M. (2018, February 08). Kickstarter Projects. Retrieved December 02, 2020, from https://www.kaggle.com/kemical/kickstarter-projects?select=ks-projects-201801.csv
+
+Polsky, D., & Baiocchi, M. (2014). Observational Studies in Economic Evaluation. Encyclopedia of Health Economics, 399-408. doi:10.1016/b978-0-12-375678-7.01417-6
+
+Propensity Score Matching. (n.d.). Retrieved December 02, 2020, from https://dimewiki.worldbank.org/wiki/Propensity_Score_Matching
+
+R Tutorial 8: Propensity Score Matching. (n.d.). Retrieved December 03, 2020, from https://sejdemyr.github.io/r-tutorials/statistics/tutorial8.html
+
+Webb, J. (2017, September 03). Course Notes for IS 6489, Statistics and Predictive Analytics. Retrieved October 12, 2020, from
+https://bookdown.org/jefftemplewebb/IS-6489/logistic-regression.html#assessing-logistic-model-fit
+
+Wickham, H. (2020). Dplyr. Retrieved December 02, 2020, from https://www.rdocumentation.org/packages/dplyr/versions/0.7.8/topics/filter
+
+Yihui Xie, C. (2020, November 23). R Markdown Cookbook. Retrieved December 02, 2020, from https://bookdown.org/yihui/rmarkdown-cookbook/hide-one.html
+
